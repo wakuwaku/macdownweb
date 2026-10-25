@@ -6,7 +6,7 @@ It is a static site with no back end. Your preferences and drafts stay in your b
 
 ## Run it with Docker
 
-You need Docker. [OrbStack](https://orbstack.dev) and Docker Desktop both work.
+You need Docker. [OrbStack](https://orbstack.dev) and Docker Desktop both work. To use Podman instead, see [With Podman](#with-podman) below.
 
 1. Start OrbStack (or Docker Desktop) so the Docker engine is running.
 2. In this folder, run:
@@ -31,14 +31,49 @@ The first build takes a minute or two. Later starts take a few seconds.
 
 ### With `just`
 
-If you have [just](https://github.com/casey/just) (macOS, Linux and Windows), the `justfile` wraps the same steps. It uses podman when it is installed and Docker otherwise; set `ENGINE=docker` to force Docker.
+[just](https://github.com/casey/just) is a small command runner for macOS, Linux and Windows. The `justfile` in this folder wraps the compose commands above, so you type less and the same commands work with Docker or Podman. The plain `docker compose` commands still work without it.
+
+Install it with `brew install just` (macOS), or see the [just installation guide](https://github.com/casey/just#installation) for other systems. Run `just` on its own to list the commands.
 
 | What | Command |
 |---|---|
-| Build and start | `just up` |
-| Stop and remove the container (keep the image) | `just down` |
-| Remove the container, image and build cache | `just clean` |
-| Status / logs | `just ps` / `just logs` |
+| Build and start, then open http://localhost:8080 | `just up` |
+| Stop and remove the container (keeps the image for a fast next start) | `just down` |
+| Remove the container, the image and dangling build images | `just clean` |
+| Show container status | `just ps` |
+| Follow the logs (Ctrl+C to stop) | `just logs` |
+
+**Which engine it uses.** `just` picks Podman when the `podman` command is installed and Docker otherwise. To choose yourself, set `ENGINE`:
+
+```
+ENGINE=docker just up
+ENGINE=podman just up
+```
+
+`just clean` runs `image prune -f`, which removes all dangling images on your machine, not only this project's.
+
+### With Podman
+
+[Podman](https://podman.io) is a drop-in alternative to Docker. The same compose file works with it.
+
+1. Install Podman and a compose provider, for example `brew install podman podman-compose` on macOS.
+2. On macOS and Windows, Podman runs containers in a small virtual machine. Create and start it once:
+
+   ```
+   podman machine init     # first time only
+   podman machine start
+   ```
+
+   On Linux there is no machine and this step is not needed.
+3. In this folder, run `just up`, or without `just`:
+
+   ```
+   podman compose up --build -d
+   ```
+
+4. Open **http://localhost:8080**.
+
+Everyday commands are the Docker ones with `podman` in place of `docker`, for example `podman compose down` and `podman compose logs -f`. With `just`, `just up` also starts the Podman machine for you if it is stopped.
 
 ### Without Compose
 
@@ -56,6 +91,8 @@ Port 8080 is set in `docker-compose.yml` (`"8080:80"`). Change the first number,
 - **`docker: command not found`**: open OrbStack once so it installs the `docker` command, then open a new terminal. If it is still missing, add `~/.orbstack/bin` to your PATH.
 - **`Cannot connect to the Docker daemon`**: the engine is not running. Open OrbStack or Docker Desktop and wait for it to start.
 - **`port is already allocated`**: something else uses port 8080. Change the port as described above.
+- **`podman: command not found`, or `just` still uses Docker**: Podman is not installed or not on your PATH. `just` falls back to Docker when it cannot find `podman`.
+- **Podman: `Cannot connect to Podman`**: the machine is not running. Run `podman machine start` (macOS and Windows).
 - **Page does not update after you changed code**: run `docker compose up --build -d` and hard-refresh the browser (Cmd+Shift+R).
 
 ### What the Docker setup does
