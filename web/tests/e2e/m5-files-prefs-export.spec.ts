@@ -800,7 +800,9 @@ test.describe('§2.3 / §9 export HTML, PDF, print, copy HTML', () => {
       return { body: d.body.innerHTML, styles: Array.from(d.querySelectorAll('style')).map((s) => s.textContent!.trim()) };
     }, html);
     const shown = await pv(page).locator('html').evaluate(() => ({ body: document.body.innerHTML, styles: Array.from(document.querySelectorAll('style')).map((s) => s.textContent!.trim()) }));
-    expect(exported.body).toBe(shown.body);
+    // The preview alone marks blocks with their source lines for scroll sync (F-11); export does not.
+    expect(exported.body).not.toContain('data-line');
+    expect(exported.body).toBe(shown.body.replace(/ data-line(-end)?="\d+"/g, ''));
     expect(exported.styles).toEqual(shown.styles);
   });
 

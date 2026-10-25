@@ -8,7 +8,7 @@ import {
   setLeftRatio,
   togglePane,
 } from '../../src/layout/split';
-import { computePreviewScrollTop, editorAnchorLines } from '../../src/layout/scrollSync';
+import { alignmentFraction, buildScrollMap, computePreviewScrollTop, mapEditorToPreview } from '../../src/layout/scrollSync';
 import { countText, wordCountLabel } from '../../src/render';
 import { parsePrefOverrides, PreferencesStore, DEFAULT_PREFERENCES } from '../../src/prefs';
 
@@ -47,47 +47,61 @@ describe('split view (F-01, F-04–F-08, F-10)', () => {
 });
 
 describe('scroll sync (F-11)', () => {
-  it('finds ATX headers, setext underlines after content, and lone images', () => {
-    const lines = ['# A', 'text', 'Sub', '---', '', '---', '![x](y.png)', 'a ![x](y) b', '#nospace'];
-    expect(editorAnchorLines(lines)).toEqual([0, 3, 6]);
-  });
+  const base = { editorContentHeight: 2000, editorVisibleHeight: 500, previewContentHeight: 4000, previewVisibleHeight: 500 };
+  const points = [
+    { editor: 100, preview: 200 },
+    { editor: 900, preview: 1800 },
+  ];
   it('maps the top of the document to the top of the preview', () => {
-    const y = computePreviewScrollTop({
-      editorScrollTop: 0,
-      editorContentHeight: 2000,
-      editorVisibleHeight: 500,
-      editorLocations: [100, 900],
-      previewContentHeight: 4000,
-      previewVisibleHeight: 500,
-      previewLocations: [200, 1800],
-    });
-    expect(y).toBe(0);
+    expect(computePreviewScrollTop({ ...base, editorScrollTop: 0, points })).toBe(0);
   });
   it('maps the bottom of the editor to the bottom of the preview', () => {
-    const y = computePreviewScrollTop({
-      editorScrollTop: 1500,
-      editorContentHeight: 2000,
-      editorVisibleHeight: 500,
-      editorLocations: [100, 900],
-      previewContentHeight: 4000,
-      previewVisibleHeight: 500,
-      previewLocations: [200, 1800],
-    });
-    expect(y).toBe(3500);
+    expect(computePreviewScrollTop({ ...base, editorScrollTop: 1500, points })).toBe(3500);
   });
-  it('interpolates between matching headers', () => {
-    // currY = 1000 → adjustment = 250; header 900 → 650 < 1000 (index 0, minY 650).
-    const y = computePreviewScrollTop({
-      editorScrollTop: 1000,
-      editorContentHeight: 4000,
-      editorVisibleHeight: 500,
-      editorLocations: [900, 1650],
-      previewContentHeight: 8000,
-      previewVisibleHeight: 500,
-      previewLocations: [2000, 3500],
-    });
-    // percent = (1000-650)/(1400-650) = 0.4667; top = 1750, bottom = 3250
-    expect(y).toBeCloseTo(1750 + 1500 * (350 / 750), 5);
+  it('aligns matching blocks at mid-screen and interpolates between them', () => {
+    // scrollTop 650: mid-screen at 900 (a pair) → preview 1800 at its mid-screen.
+    expect(computePreviewScrollTop({ ...base, editorScrollTop: 650, points })).toBe(1550);
+    // scrollTop 250 is in the top taper (alignment 0.25 of the screen): editor 375 lies
+    // between the pairs 100→200 and 900→1800, so the preview point is 750, shown 125 px down.
+    expect(computePreviewScrollTop({ ...base, editorScrollTop: 250, points })).toBe(200 + 1600 * (275 / 800) - 125);
+  });
+  it('a tall preview block (an image) scrolls through while the editor passes its one line', () => {
+    // editor: image line 400–420, next block at 440; preview: image 400–1400, next block 1430.
+    const img = [
+      { editor: 400, preview: 400 },
+      { editor: 440, preview: 1400 },
+      { editor: 460, preview: 1430 },
+    ];
+    const map = buildScrollMap(img, 2000, 4000);
+    expect(mapEditorToPreview(map, 420)).toBe(900);
+    expect(mapEditorToPreview(map, 450)).toBe(1415);
+  });
+  it('drops pairs that would move the preview backwards (the mapping is monotonic)', () => {
+    const map = buildScrollMap(
+      [
+        { editor: 100, preview: 300 },
+        { editor: 200, preview: 250 }, // out of order: dropped
+        { editor: 200, preview: 260 }, // same editor y as a dropped pair: also backwards
+        { editor: 300, preview: 600 },
+        { editor: 300, preview: 700 }, // same editor y: the first one is kept
+      ],
+      1000,
+      2000,
+    );
+    expect(map).toEqual([
+      { editor: 0, preview: 0 },
+      { editor: 100, preview: 300 },
+      { editor: 300, preview: 600 },
+      { editor: 1000, preview: 2000 },
+    ]);
+  });
+  it('alignment moves from the top edge to mid-screen to the bottom edge', () => {
+    expect(alignmentFraction(0, 1500, 500)).toBe(0);
+    expect(alignmentFraction(250, 1500, 500)).toBe(0.25);
+    expect(alignmentFraction(750, 1500, 500)).toBe(0.5);
+    expect(alignmentFraction(1500, 1500, 500)).toBe(1);
+    expect(alignmentFraction(0, 0, 500)).toBe(0); // nothing to scroll
+    expect(alignmentFraction(100, 200, 500)).toBe(0.5); // short document: tapers over half the scroll range
   });
 });
 

@@ -13,7 +13,7 @@
 ## Open items (non-blocking)
 - Partial features: F-16 (window frame not remembered), F-18/F-20 (relative links/images), F-36/F-37 (browser print dialog), F-62 (IME untested), F-130 (MathJax 3 locally; export links MathJax 2.7.3 CDN).
 - Cosmetic: O-07 (export error sheet shows unsanitised name), O-08 (Save As on untitled doc suggests Untitled.md rather than front-matter title).
-- Accepted deviations: single document; pasted CRLF becomes LF; oversized draft not kept; Cmd+N/W/T menu-only; emphasis nesting order; GitHub-2017 style hidden.
+- Accepted deviations: single document; pasted CRLF becomes LF; oversized draft not kept; Cmd+N/W/T menu-only; emphasis nesting order; GitHub-2017 style hidden; F-11 scroll sync anchors on every block (issue #2).
 - Load-flaky tests (pass alone; fail only on a heavily loaded machine): m3-independent lines 270/379/403/410/417/423, m5-independent 2199, m4-independent 1612/1806. Use `--workers=3` if the machine is busy.
 
 ## Manual checks still needed (cannot be automated headless)

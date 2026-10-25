@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { renderMarkdown, renderDocument, renderTemplate, getStyleCss, STYLE_NAMES, countText } from '../../src/render';
 import { withDefaults } from '../../src/prefs';
 import { INITIAL_SPLIT, togglePane, setLeftRatio, leftRatio, editorVisible, previewVisible, previewToggleHidden } from '../../src/layout/split';
-import { editorAnchorLines } from '../../src/layout/scrollSync';
 import { matchesShortcut } from '../../src/components/shortcuts';
 
 const r = (md: string, o = {}) => renderMarkdown(md, withDefaults(o));
@@ -148,15 +147,37 @@ describe('F-04..F-08, F-10 layout state', () => {
   });
 });
 
-describe('F-11 anchors', () => {
-  it('F-11 dash-only line directly after a blank line is not an anchor; image-only line is', () => {
-    expect(editorAnchorLines(['text', '', '---', '![a](b.png)', '## h'])).toEqual([3, 4]);
+describe('F-11 source-line anchors', () => {
+  const lines = (md: string, o = {}) =>
+    [...renderDocument(md, withDefaults(o), { sourceLines: true }).body.matchAll(/<(\w+)[^>]*? data-line="(\d+)" data-line-end="(\d+)"/g)].map(
+      (m) => `${m[1]}:${m[2]}-${m[3]}`,
+    );
+  it('F-11 marks headings, paragraphs, images and code blocks with their source lines', () => {
+    expect(lines('# A\n\ntext\n\n![x](y.png)\n\n```sh\n# comment\nnpm ci\n```\n\n## B\n')).toEqual([
+      'h1:0-1',
+      'p:2-3',
+      'p:4-5',
+      'div:6-10',
+      'h2:11-12',
+    ]);
   });
-  it('F-11 two consecutive dash lines: only the first follows content', () => {
-    expect(editorAnchorLines(['text', '---', '---'])).toEqual([1]);
+  it('F-11 a # comment inside a code fence is not a heading anchor (issue #2)', () => {
+    expect(lines('```bash\n# install\nnpm ci\n```\n').filter((l) => l.startsWith('h'))).toEqual([]);
   });
-  it('F-11 a header needs a space after the #', () => {
-    expect(editorAnchorLines(['#nospace', '# ok'])).toEqual([1]);
+  it('F-11 lists, list items, quotes, tables, hr and indented code get anchors', () => {
+    const got = lines('- a\n- b\n\n> q\n\n| x |\n|---|\n| 1 |\n\n---\n\n    code\n');
+    expect(got).toEqual(expect.arrayContaining(['ul:0-3', 'li:0-1', 'li:1-3', 'blockquote:3-4', 'table:5-8', 'tr:7-8', 'hr:9-10', 'div:11-12']));
+  });
+  it('F-11 front matter shifts the lines; its table is the first anchor', () => {
+    expect(lines('---\ntitle: t\n---\n# H\n', { htmlDetectFrontMatter: true })).toEqual(['table:0-3', 'h1:3-4']);
+  });
+  it('F-11 footnote definitions (rendered at the end) get no anchors', () => {
+    const got = lines('a[^1]\n\n[^1]: note\n\nb\n', { extensionFootnotes: true });
+    expect(got).toEqual(['p:0-1', 'p:4-5']);
+  });
+  it('F-11 Copy HTML and export bodies carry no source lines', () => {
+    expect(renderDocument('# A\n\n```\nx\n```\n', withDefaults({})).body).not.toContain('data-line');
+    expect(r('# A\n\ntext\n')).not.toContain('data-line');
   });
 });
 

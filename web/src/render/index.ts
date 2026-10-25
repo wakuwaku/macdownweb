@@ -33,6 +33,8 @@ export interface RenderResult {
 
 export interface RenderOptions {
   title?: string;
+  /** F-11: mark blocks with their source lines (`data-line`), for scroll sync in the preview. */
+  sourceLines?: boolean;
 }
 
 /**
@@ -46,7 +48,7 @@ export function renderDocument(
   prefs: MacDownPreferences,
   options: RenderOptions = {},
 ): RenderResult {
-  const parsed = parseMarkdown(markdown, prefs);
+  const parsed = parseMarkdown(markdown, prefs, { sourceLines: options.sourceLines });
   const styleTags: string[] = [];
   const styles: string[] = [];
   const css = getStyleCss(prefs.htmlStyleName);

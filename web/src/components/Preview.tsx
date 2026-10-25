@@ -17,6 +17,8 @@ export interface PreviewProps {
    * (the original also waits for MathJax before syncing, MPDocument.m:852).
    */
   onRendered: (doc: Document, lastScrollTop: number) => void;
+  /** Called when an image (or other resource) in the page finished loading and may have moved the content below it. */
+  onLayoutChange?: (doc: Document) => void;
   /** Keydown inside the preview (so app shortcuts still work there). */
   onKeyDown: (e: KeyboardEvent) => void;
   /** F-17 (P-29): preview zoom (`pageSizeMultiplier`); 1 = none. */
@@ -108,10 +110,10 @@ export function scrollToFragment(doc: Document, fragment: string): void {
  * The page is written with document.open/write so the update is synchronous
  * and the scroll position can be restored without a flash (F-02).
  */
-export function Preview({ html, scripts, scriptPrefs, onRendered, onKeyDown, zoom = 1 }: PreviewProps) {
+export function Preview({ html, scripts, scriptPrefs, onRendered, onLayoutChange, onKeyDown, zoom = 1 }: PreviewProps) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const cb = useRef({ onRendered, onKeyDown });
-  cb.current = { onRendered, onKeyDown };
+  const cb = useRef({ onRendered, onLayoutChange, onKeyDown });
+  cb.current = { onRendered, onLayoutChange, onKeyDown };
   const generation = useRef(0);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -140,6 +142,19 @@ export function Preview({ html, scripts, scriptPrefs, onRendered, onKeyDown, zoo
       }
     });
     doc.addEventListener('keydown', (e) => cb.current.onKeyDown(e));
+    // Load events do not bubble; capture them so an image that loads late re-syncs the scroll (F-11).
+    let layoutFrame = 0;
+    doc.addEventListener(
+      'load',
+      () => {
+        if (layoutFrame) return;
+        layoutFrame = requestAnimationFrame(() => {
+          layoutFrame = 0;
+          if (iframe.contentDocument === doc) cb.current.onLayoutChange?.(doc);
+        });
+      },
+      true,
+    );
     // F-18: dragging onto the preview is disabled (MPDocument.m:944-950).
     doc.addEventListener('dragover', (e) => e.preventDefault());
     doc.addEventListener('drop', (e) => e.preventDefault());

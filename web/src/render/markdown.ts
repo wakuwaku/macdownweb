@@ -124,7 +124,18 @@ export function addToLanguages(lang: string, languages: string[]): void {
 export type RenderEnv = Env & {
   /** Languages used by code blocks, in Prism load order (`currentLanguages`). */
   languages: string[];
+  /** F-11: write `data-line`/`data-line-end` source lines on blocks (preview only). */
+  sourceLines?: boolean;
+  /** Editor lines before the parsed text (the removed front matter). */
+  lineOffset?: number;
 };
+
+/** `data-line="A" data-line-end="B"` for a token map, or '' when not wanted. */
+function sourceLineAttrs(map: [number, number] | null, env?: RenderEnv): string {
+  if (!env?.sourceLines || !map) return '';
+  const offset = env.lineOffset ?? 0;
+  return ` data-line="${map[0] + offset}" data-line-end="${map[1] + offset}"`;
+}
 
 /**
  * Hoedown code block HTML, ported from `hoedown_patch_render_blockcode`
@@ -141,6 +152,7 @@ export function renderCodeBlock(
   info: string,
   prefs: Pick<RenderPreferences, 'htmlLineNumbers' | 'htmlCodeBlockAccessory'>,
   env?: RenderEnv,
+  map: [number, number] | null = null,
 ): string {
   // Hoedown takes the first word of the fence info string as the language.
   let lang = info.trim().split(/\s+/)[0] ?? '';
@@ -157,7 +169,7 @@ export function renderCodeBlock(
     if (env) addToLanguages(lang, env.languages);
   }
   const body = code.endsWith('\n') ? code.slice(0, -1) : code;
-  let html = '<div><pre';
+  let html = `<div${sourceLineAttrs(map, env)}><pre`;
   if (prefs.htmlLineNumbers) html += ' class="line-numbers"';
   if (information) html += ` data-information="${information}"`;
   html += `><code class="language-${lang ? escapeHtml(lang) : 'none'}">`;
@@ -201,6 +213,29 @@ function headerIdsPlugin(md: MarkdownIt): void {
     let n = 0;
     for (const token of state.tokens) {
       if (token.type === 'heading_open') token.attrSet('id', `toc_${n++}`);
+    }
+  });
+}
+
+/**
+ * F-11 (web deviation): with `env.sourceLines`, every block gets the source
+ * lines it came from, so scroll sync can pair editor lines with preview
+ * blocks. Footnote definitions are skipped: they render at the end, out of
+ * source order.
+ */
+function sourceLinesPlugin(md: MarkdownIt): void {
+  md.core.ruler.push('macdown_source_lines', (state) => {
+    const env = state.env as RenderEnv;
+    if (!env.sourceLines) return;
+    const offset = env.lineOffset ?? 0;
+    let inFootnotes = 0;
+    for (const token of state.tokens) {
+      if (token.type === 'footnote_block_open') inFootnotes++;
+      else if (token.type === 'footnote_block_close') inFootnotes--;
+      else if (!inFootnotes && token.map && (token.nesting === 1 || token.type === 'hr')) {
+        token.attrSet('data-line', String(token.map[0] + offset));
+        token.attrSet('data-line-end', String(token.map[1] + offset));
+      }
     }
   });
 }
@@ -250,10 +285,11 @@ export function createMarkdownIt(prefs: RenderPreferences): MarkdownIt {
   md.renderer.rules.quote_open = () => '<q>';
   md.renderer.rules.quote_close = () => '</q>';
 
-  md.renderer.rules.fence = (tokens, idx, _o, env) => renderCodeBlock(tokens[idx].content, tokens[idx].info, prefs, env as RenderEnv);
-  md.renderer.rules.code_block = (tokens, idx, _o, env) => renderCodeBlock(tokens[idx].content, '', prefs, env as RenderEnv);
+  md.renderer.rules.fence = (tokens, idx, _o, env) => renderCodeBlock(tokens[idx].content, tokens[idx].info, prefs, env as RenderEnv, tokens[idx].map);
+  md.renderer.rules.code_block = (tokens, idx, _o, env) => renderCodeBlock(tokens[idx].content, '', prefs, env as RenderEnv, tokens[idx].map);
 
   md.use(headerIdsPlugin);
+  md.use(sourceLinesPlugin);
   return md;
 }
 
@@ -278,20 +314,33 @@ export interface ParseResult {
   frontMatter?: unknown;
 }
 
+export interface ParseOptions {
+  /** F-11: mark blocks with their source lines (the preview; not Copy HTML or export). */
+  sourceLines?: boolean;
+}
+
 /** The full parse of spec §6.1, steps 1 to 5. */
-export function parseMarkdown(markdown: string, prefs: RenderPreferences): ParseResult {
+export function parseMarkdown(markdown: string, prefs: RenderPreferences, options: ParseOptions = {}): ParseResult {
   let frontMatter: ReturnType<typeof detectFrontMatter> = null;
+  let lineOffset = 0;
   if (prefs.htmlDetectFrontMatter) {
     frontMatter = detectFrontMatter(markdown);
-    if (frontMatter) markdown = markdown.slice(frontMatter.length);
+    if (frontMatter) {
+      lineOffset = markdown.slice(0, frontMatter.length).split('\n').length - 1;
+      markdown = markdown.slice(frontMatter.length);
+    }
   }
   const md = instanceFor(prefs);
-  const env: RenderEnv = { languages: [] };
+  const env: RenderEnv = { languages: [], sourceLines: options.sourceLines, lineOffset };
   const tokens = md.parse(markdown, env);
   let html = md.renderer.render(tokens, md.options, env);
   if (prefs.extensionSmartyPants) html = smartypants(html);
   if (prefs.htmlRendersTOC) html = insertToc(html, renderToc(collectHeaders(md, tokens, env)));
-  if (frontMatter) html = `${htmlTable(frontMatter.value)}\n${html}`;
+  if (frontMatter) {
+    let table = htmlTable(frontMatter.value);
+    if (options.sourceLines) table = table.replace(/^<table/, `<table data-line="0" data-line-end="${lineOffset + 1}"`);
+    html = `${table}\n${html}`;
+  }
   return { body: html, languages: env.languages, frontMatter: frontMatter?.value };
 }
 
