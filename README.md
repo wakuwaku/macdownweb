@@ -79,12 +79,12 @@ Everyday commands are the Docker ones with `podman` in place of `docker`, for ex
 
 ```
 docker build -t macdown-web ./web
-docker run --rm -p 8080:80 macdown-web
+docker run --rm -p 8080:8080 macdown-web
 ```
 
 ### Using a different port
 
-Port 8080 is set in `docker-compose.yml` (`"8080:80"`). Change the first number, for example `"3000:80"`, then run `docker compose up -d` again.
+Port 8080 is set in `docker-compose.yml` (`"8080:8080"`). Change the first number, for example `"3000:8080"`, then run `docker compose up -d` again.
 
 ### Troubleshooting
 
@@ -97,7 +97,7 @@ Port 8080 is set in `docker-compose.yml` (`"8080:80"`). Change the first number,
 
 ### What the Docker setup does
 
-The `web/Dockerfile` has two stages. The first builds the app with Node 24. The second copies only the built files into a small nginx image (about 87 MB), which serves them on port 80 inside the container. `web/nginx.conf` caches the hashed build files for a year and always revalidates `index.html`.
+The `web/Dockerfile` has two stages. The first builds the app with Node 24. The second copies only the built files into a small nginx image (about 87 MB), which serves them on port 8080 inside the container. The image is `nginx-unprivileged`, so nginx does not run as root. `web/nginx.conf` caches the hashed build files for a year and always revalidates `index.html`, and `web/security-headers.inc` adds `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers.
 
 ## Run it without Docker
 
