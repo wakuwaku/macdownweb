@@ -2282,7 +2282,9 @@ test.describe('F-35 Export HTML: every combination of the two boxes', () => {
     expect(parseExport(untitled).title).toBeNull();
     const shown = await pv(page).locator('body').evaluate((b) => b.innerHTML);
     const exported = await page.evaluate((h) => { const d = new DOMParser().parseFromString(h, 'text/html'); d.querySelectorAll('script').forEach((x) => x.remove()); return d.body.innerHTML; }, untitled);
-    expect(exported).toBe(shown);
+    // The preview alone marks blocks with their source lines for scroll sync (F-11); export does not.
+    expect(exported).not.toContain('data-line');
+    expect(exported).toBe(shown.replace(/ data-line(-end)?="\d+"/g, ''));
     await queueSave(page, 'My Doc.v2.md');
     await menu(page, 'file', 'save');
     await expect(page).toHaveTitle('My Doc.v2.md');
