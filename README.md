@@ -86,6 +86,48 @@ docker run --rm -p 8080:8080 macdown-web
 
 Port 8080 is set in `docker-compose.yml` (`"8080:8080"`). Change the first number, for example `"3000:8080"`, then run `docker compose up -d` again.
 
+### Share it on your network
+
+The container publishes port 8080 on all of the host's network interfaces, so other machines on your intranet can already reach it once it is running. Nothing in the app needs to change.
+
+1. Start it on the host machine: `docker compose up --build -d` (or `just up`).
+2. Find the host's address:
+
+   | System | Command |
+   |---|---|
+   | macOS | `ipconfig getifaddr en0` (Wi-Fi; try `en1` for Ethernet), or **System Settings > Network** |
+   | Linux | `hostname -I` |
+   | Windows | `ipconfig`, look for **IPv4 Address** |
+
+3. On another machine, open **http://\<host-ip\>:8080**, for example `http://192.168.1.20:8080`.
+
+**Use a hostname instead of an IP.** Any name that resolves to the host works: `http://notes.example.lan:8080`.
+
+- Ask your network admin for a DNS record that points to the host, or add a line to the `hosts` file on each client.
+- On macOS the host is also reachable as `<computer-name>.local` (see `scutil --get LocalHostName`), usually only on the same subnet.
+- Give the host a fixed IP address or a DHCP reservation, so the address does not change after a restart.
+
+**Drop the `:8080`.** To serve on the standard port, change the mapping in `docker-compose.yml` to `"80:8080"`, then run `docker compose up -d`. Linux and rootless Podman do not allow ports below 1024 by default, so this may need extra setup there.
+
+**Let the firewall through.** Allow incoming TCP connections on port 8080 on the host. macOS asks the first time. On Linux with ufw, run `sudo ufw allow 8080/tcp`. On Windows, add an inbound rule for TCP 8080.
+
+**Keep it on this machine only.** To stop other machines reaching it, publish to the loopback address: set the mapping to `"127.0.0.1:8080:8080"`.
+
+#### What changes when you open it by IP address or hostname
+
+Browsers only enable some features on `localhost` or on HTTPS. Over plain `http://` from another machine the app loads and you can edit, preview and export, but:
+
+| Feature | On `localhost` or HTTPS | On plain HTTP from another machine |
+|---|---|---|
+| File > Open and Save | Native file dialogs, and Save writes back to the same file | Open uses a file chooser; Save downloads a copy to the browser's download folder |
+| Copy HTML | Copies to the clipboard | Does nothing |
+| Link and image buttons | Prefill the URL from the clipboard when it holds one | No prefill; type or paste the URL yourself. Normal Cmd/Ctrl+V pasting in the editor still works |
+| Editing, preview, themes, export, drafts and preferences | Work | Work |
+
+Drafts and preferences are stored in each person's own browser, per address. A draft made at `http://192.168.1.20:8080` is not visible at `http://localhost:8080`, or at a hostname for the same machine.
+
+To get the full feature set for everyone, serve the app over HTTPS. Put a reverse proxy that terminates TLS (with a certificate your clients trust) in front of port 8080, and open the site by its `https://` address.
+
 ### Troubleshooting
 
 - **`docker: command not found`**: open OrbStack once so it installs the `docker` command, then open a new terminal. If it is still missing, add `~/.orbstack/bin` to your PATH.
